@@ -2,15 +2,15 @@
 
 importer="texture"
 type="StreamTexture"
-path="res://.import/PodEscape.png-943aaadf66abbdc4195ea048c0706aef.stex"
+path="res://.import/PodEscape.png-413a720d4eed481dbb76b3da96ce94ab.stex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://exports/html5-0.3.0-SNAPSHOT/PodEscape.png"
-dest_files=[ "res://.import/PodEscape.png-943aaadf66abbdc4195ea048c0706aef.stex" ]
+source_file="res://exports/html5-0.5.0-SNAPSHOT/PodEscape.png"
+dest_files=[ "res://.import/PodEscape.png-413a720d4eed481dbb76b3da96ce94ab.stex" ]
 
 [params]
 

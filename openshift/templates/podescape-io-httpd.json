@@ -199,6 +199,10 @@
                     }
                 },
                 "env": [
+                  {
+                    "name": "GTAG_ID",
+                    "value": "${GTAG_ID}"
+                  }
                 ]
               }
             ]
@@ -251,6 +255,12 @@
       "displayName": "Application Hostname",
       "description": "The exposed hostname that will route to the httpd service, if left blank a value will be defaulted.",
       "value": ""
+    },
+    {
+      "name": "GTAG_ID",
+      "displayName": "The ID for gtag.js",
+      "description": "The global site tag (gtag.js) is a JavaScript tagging framework and API that allows you to send event data to Google Analytics",
+      "value": "UA-164225626-1"
     },
     {
       "name": "GITHUB_WEBHOOK_SECRET",

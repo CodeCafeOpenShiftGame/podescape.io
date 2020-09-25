@@ -1,4 +1,5 @@
-FROM registry.redhat.io/rhscl/httpd-24-rhel7
+#FROM registry.redhat.io/rhscl/httpd-24-rhel7
+FROM centos/httpd-24-centos7
 
 USER 0
 ADD . /tmp/src/
@@ -13,5 +14,6 @@ CMD /usr/libexec/s2i/run
 # If we don't need s2i we could just do something like this
 # and also we could use centos if we don't have access to Red Hat's registry
 # FROM centos/httpd-24-centos7
+# FROM registry.redhat.io/rhscl/httpd-24-rhel7
 # ADD index.html /var/www/html/index.html
 # CMD run-httpd

@@ -1,80 +1,43 @@
 {
   "kind": "Template",
-  "apiVersion": "v1",
+  "apiVersion": "template.openshift.io/v1",
   "metadata": {
     "name": "podescape-io",
     "annotations": {
-      "openshift.io/display-name": "PodEscape backed by Apache HTTP Server",
-      "description": "PodEscape wasm build served up via an Apache HTTP Server. See https://github.com/CodeCafeOpenShiftGame/podescape.io/blob/master/README.md.",
-      "tags": "quickstart,httpd",
+      "openshift.io/display-name": "PodEscape static site (Apache httpd)",
+      "description": "Serves the PodEscape WebAssembly build with Red Hat's Hummingbird httpd image. Builds the repository Dockerfile inside the cluster.",
+      "tags": "quickstart,httpd,static",
       "iconClass": "icon-apache",
-      "openshift.io/long-description": "This template defines resources needed to serve PodEscape via Apache HTTP Server (httpd), including a build configuration and application deployment configuration.",
+      "openshift.io/long-description": "Creates a Docker-strategy BuildConfig that builds this repository's Dockerfile, an output ImageStream, a Deployment, a Service and a Route. There is no s2i build step; the image is based on registry.access.redhat.com/hi/httpd and runs as a non-root user on port 8080.",
       "openshift.io/provider-display-name": "CodeCafe OpenShift Game team",
       "openshift.io/documentation-url": "https://github.com/CodeCafeOpenShiftGame/podescape.io",
       "openshift.io/support-url": "https://github.com/CodeCafeOpenShiftGame/PodEscape",
       "template.openshift.io/bindable": "false"
     }
   },
-  "message": "The following service(s) have been created in your project: ${NAME}.\n\nFor more information about using this template, including OpenShift considerations, see https://github.com/CodeCafeOpenShiftGame/podescape.io/blob/master/README.md.",
+  "message": "The following objects have been created: ${NAME} (BuildConfig, ImageStream, Deployment, Service, Route).\n\nStart the first build with:\n  oc start-build ${NAME} --follow\n\nThe build pulls ${SOURCE_REPOSITORY_URL} from GitHub and builds the repository Dockerfile. The Deployment rolls out automatically when the ${NAME}:latest ImageStreamTag is updated.",
   "labels": {
-      "template": "podescape-io",
-      "app": "podescape-io"
+    "template": "podescape-io",
+    "app": "podescape-io"
   },
   "objects": [
     {
-      "kind": "Service",
-      "apiVersion": "v1",
-      "metadata": {
-        "name": "${NAME}",
-        "annotations": {
-          "description": "Exposes and load balances the application pods"
-        }
-      },
-      "spec": {
-        "ports": [
-          {
-            "name": "web",
-            "port": 8080,
-            "targetPort": 8080
-          }
-        ],
-        "selector": {
-          "name": "${NAME}"
-        }
-      }
-    },
-    {
-      "kind": "Route",
-      "apiVersion": "v1",
-      "metadata": {
-        "name": "${NAME}"
-      },
-      "spec": {
-        "host": "${APPLICATION_DOMAIN}",
-        "to": {
-          "kind": "Service",
-          "name": "${NAME}"
-        }
-      }
-    },
-    {
       "kind": "ImageStream",
-      "apiVersion": "v1",
+      "apiVersion": "image.openshift.io/v1",
       "metadata": {
         "name": "${NAME}",
         "annotations": {
-          "description": "Keeps track of changes in the application image"
+          "description": "Tracks images built from this repository"
         }
       }
     },
     {
       "kind": "BuildConfig",
-      "apiVersion": "v1",
+      "apiVersion": "build.openshift.io/v1",
       "metadata": {
         "name": "${NAME}",
         "annotations": {
-          "description": "Defines how to build the application",
-          "template.alpha.openshift.io/wait-for-ready": "true"
+          "description": "Builds the static site image from the repository Dockerfile (no s2i)"
         }
       },
       "spec": {
@@ -87,13 +50,9 @@
           "contextDir": "${CONTEXT_DIR}"
         },
         "strategy": {
-          "type": "Source",
-          "sourceStrategy": {
-            "from": {
-              "kind": "ImageStreamTag",
-              "namespace": "${NAMESPACE}",
-              "name": "httpd:2.4"
-            }
+          "type": "Docker",
+          "dockerStrategy": {
+            "dockerfilePath": "Dockerfile"
           }
         },
         "output": {
@@ -102,13 +61,8 @@
             "name": "${NAME}:latest"
           }
         },
+        "runPolicy": "SerialLatestOnly",
         "triggers": [
-          {
-            "type": "ImageChange"
-          },
-          {
-            "type": "ConfigChange"
-          },
           {
             "type": "GitHub",
             "github": {
@@ -120,93 +74,139 @@
             "generic": {
               "secret": "${GENERIC_WEBHOOK_SECRET}"
             }
+          },
+          {
+            "type": "ConfigChange"
           }
         ]
       }
     },
     {
-      "kind": "DeploymentConfig",
+      "kind": "Deployment",
+      "apiVersion": "apps/v1",
+      "metadata": {
+        "name": "${NAME}",
+        "labels": {
+          "app": "${NAME}"
+        },
+        "annotations": {
+          "description": "Serves the static site on port 8080",
+          "image.openshift.io/triggers": "[{\"from\":{\"kind\":\"ImageStreamTag\",\"name\":\"${NAME}:latest\"},\"fieldPath\":\"spec.template.spec.containers[0].image\"}]"
+        }
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app": "${NAME}"
+          }
+        },
+        "strategy": {
+          "type": "RollingUpdate",
+          "rollingUpdate": {
+            "maxUnavailable": 0,
+            "maxSurge": 1
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "${NAME}"
+            }
+          },
+          "spec": {
+            "automountServiceAccountToken": false,
+            "terminationGracePeriodSeconds": 30,
+            "containers": [
+              {
+                "name": "podescape-io",
+                "image": "${NAME}:latest",
+                "imagePullPolicy": "Always",
+                "ports": [
+                  {
+                    "name": "web",
+                    "containerPort": 8080,
+                    "protocol": "TCP"
+                  }
+                ],
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/",
+                    "port": "web"
+                  },
+                  "initialDelaySeconds": 3,
+                  "timeoutSeconds": 3,
+                  "periodSeconds": 10
+                },
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/",
+                    "port": "web"
+                  },
+                  "initialDelaySeconds": 10,
+                  "timeoutSeconds": 3,
+                  "periodSeconds": 20
+                },
+                "resources": {
+                  "limits": {
+                    "memory": "${MEMORY_LIMIT}"
+                  },
+                  "requests": {
+                    "cpu": "50m",
+                    "memory": "64Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "runAsNonRoot": true,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "kind": "Service",
       "apiVersion": "v1",
       "metadata": {
         "name": "${NAME}",
         "annotations": {
-          "description": "Defines how to deploy the application server",
-          "template.alpha.openshift.io/wait-for-ready": "true"
+          "description": "Exposes and load balances the application pods"
         }
       },
       "spec": {
-        "strategy": {
-          "type": "Rolling"
-        },
-        "triggers": [
-          {
-            "type": "ImageChange",
-            "imageChangeParams": {
-              "automatic": true,
-              "containerNames": [
-                "podescape-io"
-              ],
-              "from": {
-                "kind": "ImageStreamTag",
-                "name": "${NAME}:latest"
-              }
-            }
-          },
-          {
-            "type": "ConfigChange"
-          }
-        ],
-        "replicas": 1,
         "selector": {
+          "app": "${NAME}"
+        },
+        "ports": [
+          {
+            "name": "web",
+            "port": 8080,
+            "targetPort": "web"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "Route",
+      "apiVersion": "route.openshift.io/v1",
+      "metadata": {
+        "name": "${NAME}"
+      },
+      "spec": {
+        "host": "${APPLICATION_DOMAIN}",
+        "to": {
+          "kind": "Service",
           "name": "${NAME}"
         },
-        "template": {
-          "metadata": {
-            "name": "${NAME}",
-            "labels": {
-              "name": "${NAME}"
-            }
-          },
-          "spec": {
-            "containers": [
-              {
-                "name": "podescape-io",
-                "image": " ",
-                "ports": [
-                  {
-                    "containerPort": 8080
-                  }
-                ],
-                "readinessProbe": {
-                  "timeoutSeconds": 3,
-                  "initialDelaySeconds": 3,
-                  "httpGet": {
-                    "path": "/",
-                    "port": 8080
-                  }
-                },
-                "livenessProbe": {
-                    "timeoutSeconds": 3,
-                    "initialDelaySeconds": 30,
-                    "httpGet": {
-                        "path": "/",
-                        "port": 8080
-                    }
-                },
-                "resources": {
-                    "limits": {
-                        "memory": "${MEMORY_LIMIT}"
-                    }
-                },
-                "env": [
-                  {
-                    "name": "GTAG_ID",
-                    "value": "${GTAG_ID}"
-                  }
-                ]
-              }
-            ]
-          }
+        "port": {
+          "targetPort": "web"
         }
       }
     }
@@ -215,16 +215,9 @@
     {
       "name": "NAME",
       "displayName": "Name",
-      "description": "The name assigned to all of the frontend objects defined in this template.",
+      "description": "The name assigned to all of the objects defined in this template.",
       "required": true,
       "value": "podescape-io"
-    },
-    {
-      "name": "NAMESPACE",
-      "displayName": "Namespace",
-      "description": "The OpenShift Namespace where the ImageStream resides.",
-      "required": true,
-      "value": "openshift"
     },
     {
       "name": "MEMORY_LIMIT",
@@ -236,36 +229,35 @@
     {
       "name": "SOURCE_REPOSITORY_URL",
       "displayName": "Git Repository URL",
-      "description": "The URL of the repository with your application source code.",
+      "description": "The URL of the repository with the application source code.",
       "required": true,
       "value": "https://github.com/CodeCafeOpenShiftGame/podescape.io.git"
     },
     {
       "name": "SOURCE_REPOSITORY_REF",
       "displayName": "Git Reference",
-      "description": "Set this to a branch name, tag or other ref of your repository if you are not using the default branch."
+      "description": "Branch, tag or commit to build. Leave empty to build the repository default branch.",
+      "required": false,
+      "value": ""
     },
     {
       "name": "CONTEXT_DIR",
       "displayName": "Context Directory",
-      "description": "Set this to the relative path to your project if it is not in the root of your repository."
+      "description": "Relative path to the build context if it is not the repository root.",
+      "required": false,
+      "value": ""
     },
     {
       "name": "APPLICATION_DOMAIN",
       "displayName": "Application Hostname",
-      "description": "The exposed hostname that will route to the httpd service, if left blank a value will be defaulted.",
+      "description": "The exposed hostname that will route to the service. Leave empty to have one generated.",
+      "required": false,
       "value": ""
-    },
-    {
-      "name": "GTAG_ID",
-      "displayName": "The ID for gtag.js",
-      "description": "The global site tag (gtag.js) is a JavaScript tagging framework and API that allows you to send event data to Google Analytics",
-      "value": "UA-164225626-1"
     },
     {
       "name": "GITHUB_WEBHOOK_SECRET",
       "displayName": "GitHub Webhook Secret",
-      "description": "Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.",
+      "description": "Secret for the GitHub webhook trigger. A difficult to guess string encoded as part of the webhook URL. Not encrypted.",
       "generate": "expression",
       "from": "[a-zA-Z0-9]{40}"
     },
